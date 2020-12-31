@@ -5,11 +5,18 @@ Linux kernel driver and userspace toolset for interacting with keyboard backligh
 **Note:** This isn't official software developed by manufacturer, but rather a custom piece of code made by a few passionates.
 
 ## Installation
-If you prefer to prepare software for `pacman` package manager, check out the `README.md` file from `package/` directory for detailed instruction.
+If you're using Arch Linux or other distro using the same package manager (pacman), reach out to Github Releases tab and download the newest `.tar.zst` archive. After that install it with the following command:
 
-In other cases, install kernel driver and userspace cli using manuals present in `README.md` files in `cli/` and `driver/` directories.
+```sh
+sudo pacman -U <path_to_file>.tar.zst
+```
 
-## Tested software
+After reboot kernel driver should be fully operational.
+
+
+In other cases, manually install kernel driver and userspace toolset with help from `README.md` files in `cli/` and `driver/` directories.
+
+## Tested hardware
 List of tested laptop models:
 
 | Model | Result | Notes |
