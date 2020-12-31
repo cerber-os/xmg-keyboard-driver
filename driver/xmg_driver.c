@@ -2,15 +2,15 @@
  *  xmg_driver.c - Driver adding support for keyboard lightning
  *          in some XMG laptops
  */
-#include <linux/module.h>
-#include <linux/kernel.h>
 #include <linux/acpi.h>
-#include <linux/uaccess.h>
-#include <linux/fs.h>
-#include <linux/platform_device.h>
-#include <linux/miscdevice.h>
-#include <linux/delay.h>
 #include <linux/capability.h>
+#include <linux/delay.h>
+#include <linux/fs.h>
+#include <linux/kernel.h>
+#include <linux/miscdevice.h>
+#include <linux/module.h>
+#include <linux/platform_device.h>
+#include <linux/uaccess.h>
 
 
 #include "xmg_driver.h"
@@ -26,12 +26,13 @@ static const char DCHU_UUID[] = {
 };
 
 static int xmg_acpi_call(struct device* dev, int cmd, char* buffer, size_t buffer_len) {
-    acpi_status acpiStatus;
     int i, ret = 0;
+    char stack_buffer[0x10] = {0};
+    
+    acpi_status acpiStatus;
     struct acpi_object_list arg;
     struct acpi_buffer out_buffer = { ACPI_ALLOCATE_BUFFER, NULL };
     union acpi_object* packages;
-    char stack_buffer[0x10] = {0};
 
     // Extend buffer to at least 0x10 bytes
     if(buffer_len < 0x10) {
