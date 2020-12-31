@@ -1,0 +1,36 @@
+# Maintainer: Pawel Wieczorek <contact@cerberos.pl>
+
+_pkgbase=xmg_driver
+pkgname=xmg_driver-dkms
+pkgver=1.7
+pkgrel=0
+pkgdesc="Kernel module and userspace tool for using ACPI functionality present on XMG laptops"
+arch=('x86_64')
+url=""
+license=('MIT')
+depends=('dkms')
+makedepends=('linux-headers')
+source=("xmg_driver-$pkgver.tar.gz"
+        "dkms.conf"
+		"10-udev-xmg_driver.rules")
+sha256sums=('SKIP'
+	    	'SKIP'
+    	    'SKIP')
+build() {
+	cd cli
+	make
+	cd ..
+}
+
+package() {
+	install -Dt "$pkgdir/usr/src/xmg_driver-$pkgver" -m0644 driver/* ../dkms.conf
+
+	sed -e "s/@_PKGBASE@/${_pkgbase}/" \
+      		-e "s/@PKGVER@/${pkgver}/" \
+	        -i "${pkgdir}"/usr/src/${_pkgbase}-${pkgver}/dkms.conf
+
+	echo xmg_driver | install -Dm0644 /dev/stdin "$pkgdir/usr/lib/modules-load.d/xmg_driver.conf"
+
+	install -Dt "$pkgdir/etc/udev/rules.d" -m0444 10-udev-xmg_driver.rules
+	install -Dt "$pkgdir/usr/bin" -m0755 cli/xmg_cli
+}

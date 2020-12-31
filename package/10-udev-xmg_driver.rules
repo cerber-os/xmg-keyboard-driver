@@ -1,0 +1,2 @@
+KERNEL=="xmg_driver", MODE="0440", OWNER="root", GROUP="wheel"
+
