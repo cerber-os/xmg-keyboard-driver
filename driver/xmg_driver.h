@@ -3,7 +3,7 @@
  *          in some XMG laptops
  */
 
-#define XMGDriverVersionStr	"1.7"
+#define XMGDriverVersionStr	"1.8"
 
 struct xmg_data {
     struct platform_device* pdev;
@@ -33,7 +33,9 @@ struct xmg_data {
 /*
  *	LOGGING UTILS
  */
-#define XMG_LOG_ERR(DEV, FMT, ...)   dev_err(DEV, "[%s] " FMT, __func__, ##__VA_ARGS__)
+#define XMG_LOG_INFO(DEV, FMT, ...)     dev_info(DEV, "[%s] " FMT, __func__, ##__VA_ARGS__)
+#define XMG_LOG_WARN(DEV, FMT, ...)     dev_warn(DEV, "[%s] " FMT, __func__, ##__VA_ARGS__)
+#define XMG_LOG_ERR(DEV, FMT, ...)      dev_err(DEV, "[%s] " FMT, __func__, ##__VA_ARGS__)
 
 /*
  *	ACPI HELPERS
@@ -62,7 +64,7 @@ struct xmg_data {
 struct xmg_dchu {
     int             cmd;
     char* __user    ubuf;
-    int             length;
+    unsigned int    length;
 };
 
 

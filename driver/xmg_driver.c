@@ -25,7 +25,8 @@ static const char DCHU_UUID[] = {
     0xad, 0xd6, 0xdb, 0x71, 0xbd, 0xc0, 0xaf, 0xad
 };
 
-static int xmg_acpi_call(struct device* dev, int cmd, char* buffer, size_t buffer_len) {
+static int xmg_acpi_call(struct device* dev, int cmd,
+            char* buffer, size_t buffer_len, struct acpi_buffer* output) {
     int i, ret = 0;
     char stack_buffer[0x10] = {0};
     
@@ -66,14 +67,17 @@ static int xmg_acpi_call(struct device* dev, int cmd, char* buffer, size_t buffe
 
 
     acpiStatus = acpi_evaluate_object(ACPI_HANDLE(dev), "_DSM", &arg, &out_buffer);
-    if (ACPI_FAILURE(acpiStatus))
-    {
+    if (ACPI_FAILURE(acpiStatus)) {
         XMG_LOG_ERR(dev, "Cannot evaluate object - ACPI Error: %s", acpi_format_exception(acpiStatus));
         ret = -EFAULT;
     }
 
+    if(output != NULL) {
+        memcpy(output, &out_buffer, sizeof(out_buffer));
+    } else
+        kfree(out_buffer.pointer);
+
     kfree(packages);
-    kfree(out_buffer.pointer);
 arg_free:
     kfree(arg.pointer);
 exit:
@@ -92,7 +96,7 @@ static int xmg_driver_set_brightness(struct device* dev, int brightness) {
     }
 
     enc_brightness = (KEYBOARD_BRIGHTNESS_MAGIC << 24) | brightness;
-    ret = xmg_acpi_call(dev, KEYBOARD_DCHU_COMMAND, (char*)&enc_brightness, sizeof(enc_brightness));
+    ret = xmg_acpi_call(dev, KEYBOARD_DCHU_COMMAND, (char*)&enc_brightness, sizeof(enc_brightness), NULL);
     return ret;
 }
 
@@ -106,7 +110,7 @@ static int xmg_driver_set_color(struct device* dev, int color) {
     }
 
     enc_color = (KEYBOARD_COLOR_MAGIC << 24) | color;
-    ret = xmg_acpi_call(dev, KEYBOARD_DCHU_COMMAND, (char*)&enc_color, sizeof(enc_color));    
+    ret = xmg_acpi_call(dev, KEYBOARD_DCHU_COMMAND, (char*)&enc_color, sizeof(enc_color), NULL);
     return ret;
 }
 
@@ -125,7 +129,7 @@ static int xmg_driver_set_timeout(struct device* dev, int timeout) {
         enc_timeout = (KEYBOARD_TIMEOUT_MAGIC << 24) | (timeout << 8) | 0xFF;
     }
 
-    ret = xmg_acpi_call(dev, KEYBOARD_DCHU_COMMAND_2, (char*)&enc_timeout, sizeof(enc_timeout));    
+    ret = xmg_acpi_call(dev, KEYBOARD_DCHU_COMMAND_2, (char*)&enc_timeout, sizeof(enc_timeout), NULL);
     return ret;
 }
 
@@ -133,13 +137,15 @@ static int xmg_driver_set_boot(struct device* dev, int mode) {
     int ret = 0;
     int enc_mode = (KEYBOARD_BOOT_MAGIC << 24) | (!!mode);
 
-    ret = xmg_acpi_call(dev, KEYBOARD_DCHU_COMMAND_2, (char*)&enc_mode, sizeof(enc_mode));    
+    ret = xmg_acpi_call(dev, KEYBOARD_DCHU_COMMAND_2, (char*)&enc_mode, sizeof(enc_mode), NULL);
     return ret;
 }
 
 static int xmg_driver_call_dchu(struct device* dev, struct xmg_dchu* dchu) {
     int ret = 0;
     char* kernel_buffer = NULL;
+    struct acpi_buffer acpi_output = {0};
+    union acpi_object* acpi_obj = NULL;
     
     if(!dchu->length || dchu->length > 4096)
         return -EINVAL;
@@ -154,17 +160,40 @@ static int xmg_driver_call_dchu(struct device* dev, struct xmg_dchu* dchu) {
         goto exit;
     }
 
-    ret = xmg_acpi_call(dev, dchu->cmd, kernel_buffer, dchu->length);
-    if(!ret) 
+    ret = xmg_acpi_call(dev, dchu->cmd, kernel_buffer, dchu->length, &acpi_output);
+    if(ret)
         goto exit;
 
-    if(copy_to_user(dchu->ubuf, kernel_buffer, dchu->length)) {
-        XMG_LOG_ERR(dev, "copy to user failed");
-        ret = -EINVAL;
+    /*
+     * Despite type, acpi_output contains pointer to kernel object acpi_object
+     *   we need to copy only its content to user
+     */
+    acpi_obj = acpi_output.pointer;
+    if(acpi_obj->type == ACPI_TYPE_BUFFER) {
+        size_t acpi_buffer_size = acpi_obj->buffer.length;
+
+        if(acpi_buffer_size > dchu->length) {
+            XMG_LOG_WARN(dev, "ACPI output (%lu) is larger than provided buffer size (%d) - "
+                    "result will be truncated!", acpi_buffer_size, dchu->length);
+            acpi_buffer_size = dchu->length;
+            ret = -E2BIG;
+        }
+
+        if(copy_to_user(dchu->ubuf, acpi_obj->buffer.pointer, acpi_buffer_size)) {
+            XMG_LOG_ERR(dev, "copy to user failed");
+            ret = -EINVAL;
+            goto exit;
+        }
+
+        // Length now shows the size of saved output
+        dchu->length = acpi_buffer_size;
+    } else {
+        XMG_LOG_ERR(dev, "ACPI output contains unsupported type (%u)", acpi_obj->type);
+        ret = -ENOTSUPP;
         goto exit;
     }
-    
 exit:
+    kfree(acpi_output.pointer);
     kfree(kernel_buffer);
     return ret;
 }
@@ -223,7 +252,13 @@ static long xmg_driver_ioctl(struct file* file, unsigned int cmd, unsigned long 
             }
 
             ret = xmg_driver_call_dchu(dev, &params.dchu);
-            // copy_to_user is not required as no changes have been made in params.dchu structure
+
+            if(copy_to_user((void* __user)arg, &params.dchu, sizeof(params.dchu))) {
+                XMG_LOG_ERR(dev, "copy to user failed");
+                ret = -EINVAL;
+                break;
+            }
+
             break;
 
         default:
@@ -270,7 +305,7 @@ static int xmg_driver_probe(struct platform_device *pdev) {
     atomic_set(&drv->color, 0);
     atomic_set(&drv->timeout, 0);
 
-    dev_info(&pdev->dev, "registered (v.%s)", XMGDriverVersionStr);
+    XMG_LOG_INFO(&pdev->dev, "registered (v.%s)", XMGDriverVersionStr);
     return 0;
 }
 
@@ -280,7 +315,7 @@ static int xmg_driver_remove(struct platform_device *pdev) {
     misc_deregister(&drv->mdev);
     kfree(drv);
 
-    dev_info(&pdev->dev, "unregistered");
+    XMG_LOG_INFO(&pdev->dev, "unregistered");
     return 0;
 }
 
@@ -305,7 +340,7 @@ static int xmg_driver_resume(struct device *device) {
             XMG_LOG_ERR(dev, "failed to set timeout after resume");
     }
 
-    dev_info(dev, "finished resume procedure");
+    XMG_LOG_INFO(dev, "finished resume procedure");
     return 0;
 }
 

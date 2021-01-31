@@ -2,7 +2,7 @@
 
 _pkgbase=xmg_driver
 pkgname=xmg_driver-dkms
-pkgver=1.7
+pkgver=1.8
 pkgrel=0
 pkgdesc="Kernel module and userspace tool for using ACPI functionality present on XMG laptops"
 arch=('x86_64')
@@ -11,11 +11,11 @@ license=('MIT')
 depends=('dkms')
 makedepends=('linux-headers')
 source=("xmg_driver-$pkgver.tar.gz"
-        "dkms.conf"
-		"10-udev-xmg_driver.rules")
-sha256sums=('SKIP'
-	    	'SKIP'
-    	    'SKIP')
+	"dkms.conf"
+	"10-udev-xmg_driver.rules")
+sha256sums=(	'SKIP'
+		'SKIP'
+    	    	'SKIP')
 build() {
 	cd cli
 	make
