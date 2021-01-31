@@ -11,6 +11,8 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/uaccess.h>
+#include <linux/hwmon.h>
+#include <linux/hwmon-sysfs.h>
 
 
 #include "xmg_driver.h"
@@ -84,7 +86,9 @@ exit:
 	return ret;
 }
 
-
+/*
+ * KEYBOARD BACKLIGHT SUPPORT
+ */
 static int xmg_driver_set_brightness(struct device* dev, int brightness) {
     int ret = 0;
     int enc_brightness;
@@ -141,6 +145,160 @@ static int xmg_driver_set_boot(struct device* dev, int mode) {
     return ret;
 }
 
+/*
+ * HWMON SUPPORT
+ */
+struct xmg_fan_acpi_response {
+    u8      reserved1[2];
+    u16     cpu_rpm;
+    u16     gpu_rpm;
+    u16     gpu2_rpm;
+    u8      reserved2[8];
+
+    u8      cpu_duty;
+    u8      reserved3[1];
+    u8      cpu_temp;
+    u8      gpu_duty;
+    u8      reserved4[1];
+    u8      gpu_temp;
+    u8      gpu2_duty;
+    u8      reserved5[1];
+    u8      gpu2_temp;
+} __PACKED__;
+
+
+static int xmg_fan_get_data(struct device* dev, struct xmg_fan_acpi_response* fan_data) {
+    int ret = 0;
+    char empty_input[0x10] = {0};
+    union acpi_object* acpi_obj;
+    struct acpi_buffer acpi_output = {0};
+
+    ret = xmg_acpi_call(dev, FAN_DCHU_COMMAND_GET, empty_input, 0, &acpi_output);
+    if(ret)
+        goto exit;
+    
+    /*
+     * acpi_output contains pointer to acpi_object
+     */
+    acpi_obj = acpi_output.pointer;
+
+    if(acpi_obj->type != ACPI_TYPE_BUFFER) {
+        XMG_LOG_ERR(dev, "got invalid ACPI buffer type (%d, expected: %d)",
+            acpi_obj->type, ACPI_TYPE_BUFFER);
+        ret = -EFAULT;
+        goto exit;
+    }
+
+    if(acpi_obj->buffer.length < sizeof(struct xmg_fan_acpi_response)) {
+        XMG_LOG_ERR(dev, "got invalid ACPI buffer size (%d, expected min.: %lu)",
+            acpi_obj->buffer.length, sizeof(struct xmg_fan_acpi_response));
+        ret = -EFAULT;
+        goto exit;
+    }
+
+    memcpy(fan_data, acpi_obj->buffer.pointer, sizeof(*fan_data));
+
+exit:
+    kfree(acpi_output.pointer);
+    return ret;
+}
+
+/*
+* Convert value returned by ACPI call to rotations per minute (RPM)
+*  - this formula is equivalent to `2 * 60 / (128 / 23 * acpi_value)`
+*/
+#define XMG_ACPI_RPM_TO_REAL(X) (2156250ull / (unsigned long long) X)
+
+static ssize_t xmg_hwmon_fan_show(struct device* hwdev,
+				  struct device_attribute* devattr, char* buf)
+{
+	int index = to_sensor_dev_attr(devattr)->index;
+	struct xmg_data* xmg = dev_get_drvdata(hwdev);
+    struct device* dev = &xmg->pdev->dev;
+
+    struct xmg_fan_acpi_response fan_data;
+    int fan_speed, ret = 0;
+
+    ret = xmg_fan_get_data(dev, &fan_data);
+    if(ret != 0) {
+        XMG_LOG_ERR(dev, "failed to get fan_data (ret=%d)", ret);
+        return ret;
+    }
+
+    if(index == 0)
+        fan_speed = fan_data.cpu_rpm;
+    else if(index == 1)
+        fan_speed = fan_data.gpu_rpm;
+    else {
+        XMG_LOG_ERR(dev, "invalid sensor index (%d)", index);
+        return -EINVAL;
+    }
+
+    if(fan_speed == 0) {
+        XMG_LOG_WARN(dev, "CPU Fan RPM is Infinity");
+        return -EFAULT;
+    }
+
+    fan_speed = XMG_ACPI_RPM_TO_REAL(fan_speed);
+	return sprintf(buf, "%d\n", fan_speed);
+}
+
+static ssize_t xmg_hwmon_fan_label_show(struct device* hwdev,
+                    struct device_attribute* devattr, char* buf) {
+    int index = to_sensor_dev_attr(devattr)->index;
+
+    static const char* XMG_FAN_LABELS[] = {
+        "CPU Fan",
+        "GPU Fan",
+    };
+
+    if(index < 0 || index >= ARRAY_SIZE(XMG_FAN_LABELS))
+        return -EINVAL;
+    
+    return sprintf(buf, "%s\n", XMG_FAN_LABELS[index]);
+}
+
+static SENSOR_DEVICE_ATTR_RO(fan1_input, xmg_hwmon_fan, 0);
+static SENSOR_DEVICE_ATTR_RO(fan1_label, xmg_hwmon_fan_label, 0);
+static SENSOR_DEVICE_ATTR_RO(fan2_input, xmg_hwmon_fan, 1);
+static SENSOR_DEVICE_ATTR_RO(fan2_label, xmg_hwmon_fan_label, 1);
+
+static struct attribute *xmg_acpi_attrs[] = {
+    &sensor_dev_attr_fan1_input.dev_attr.attr,      /* 0 - CPU Fan RPM */
+    &sensor_dev_attr_fan1_label.dev_attr.attr,      /* 1 - CPU Fan Label */
+    &sensor_dev_attr_fan2_input.dev_attr.attr,      /* 2 - GPU Fan RPM */
+    &sensor_dev_attr_fan2_label.dev_attr.attr,      /* 3 - GPU Fan Label */
+};
+
+
+static umode_t xmg_acpi_is_visible(struct kobject *kobj, struct attribute *attr, int index) {
+    return attr->mode;
+}
+
+
+static const struct attribute_group xmg_acpi_group = {
+	.attrs = xmg_acpi_attrs,
+	.is_visible = xmg_acpi_is_visible,
+};
+__ATTRIBUTE_GROUPS(xmg_acpi);
+
+static int xmg_hwmon_init(struct xmg_data* xmg) {
+    int ret = 0;
+
+    xmg->hdev = hwmon_device_register_with_groups(NULL, "xmg_acpi", xmg, xmg_acpi_groups);
+    if(IS_ERR(xmg->hdev))
+        ret = PTR_ERR(xmg->hdev);
+    return ret;
+}
+
+static void xmg_hwmon_remove(struct xmg_data* xmg) {
+    hwmon_device_unregister(xmg->hdev);
+}
+
+
+/*
+ * MISC
+ */
 static int xmg_driver_call_dchu(struct device* dev, struct xmg_dchu* dchu) {
     int ret = 0;
     char* kernel_buffer = NULL;
@@ -297,7 +455,7 @@ static int xmg_driver_probe(struct platform_device *pdev) {
 
     ret = misc_register(&drv->mdev);
     if (ret) {
-        XMG_LOG_ERR(&pdev->dev, "failed to create miscdev\n");
+        XMG_LOG_ERR(&pdev->dev, "failed to create miscdev");
         return ret;
     }
 
@@ -305,12 +463,27 @@ static int xmg_driver_probe(struct platform_device *pdev) {
     atomic_set(&drv->color, 0);
     atomic_set(&drv->timeout, 0);
 
+    // Setup cooling device for CPU fan
+    ret = xmg_hwmon_init(drv);
+    if(ret) {
+        XMG_LOG_ERR(&drv->pdev->dev, "failed to register hwmon device - err: %d", ret);
+        goto misc_unreg;
+    }
+    
+
     XMG_LOG_INFO(&pdev->dev, "registered (v.%s)", XMGDriverVersionStr);
     return 0;
+
+misc_unreg:
+    misc_deregister(&drv->mdev);
+    kfree(drv);
+    return ret;
 }
 
 static int xmg_driver_remove(struct platform_device *pdev) {
     struct xmg_data *drv = platform_get_drvdata(pdev);
+
+    xmg_hwmon_remove(drv);
 
     misc_deregister(&drv->mdev);
     kfree(drv);
