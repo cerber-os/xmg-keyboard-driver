@@ -18,7 +18,7 @@
 #include "xmg_driver.h"
 
 #ifndef CONFIG_ACPI
-	#error "CONFIG_ACPI is required by xmg_driver!"
+    #error "CONFIG_ACPI is required by xmg_driver!"
 #endif
 
 
@@ -83,7 +83,7 @@ static int xmg_acpi_call(struct device* dev, int cmd,
 arg_free:
     kfree(arg.pointer);
 exit:
-	return ret;
+    return ret;
 }
 
 /*
@@ -209,9 +209,9 @@ exit:
 }
 
 static ssize_t xmg_hwmon_temp_show(struct device* hwdev,
-				  struct device_attribute* devattr, char* buf) {
+                  struct device_attribute* devattr, char* buf) {
     int index = to_sensor_dev_attr(devattr)->index;
-	struct xmg_data* xmg = dev_get_drvdata(hwdev);
+    struct xmg_data* xmg = dev_get_drvdata(hwdev);
     struct device* dev = &xmg->pdev->dev;
 
     struct xmg_fan_acpi_response fan_data;
@@ -231,7 +231,7 @@ static ssize_t xmg_hwmon_temp_show(struct device* hwdev,
         XMG_LOG_ERR(dev, "invalid sensor index (%d)", index);
         return -EINVAL;
     }
-	return sprintf(buf, "%d\n", temperature * 1000);
+    return sprintf(buf, "%d\n", temperature * 1000);
 }
 
 static ssize_t xmg_hwmon_temp_label_show(struct device* hwdev,
@@ -256,10 +256,10 @@ static ssize_t xmg_hwmon_temp_label_show(struct device* hwdev,
 #define XMG_ACPI_RPM_TO_REAL(X) (2156250ull / (unsigned long long) X)
 
 static ssize_t xmg_hwmon_fan_show(struct device* hwdev,
-				  struct device_attribute* devattr, char* buf)
+                  struct device_attribute* devattr, char* buf)
 {
-	int index = to_sensor_dev_attr(devattr)->index;
-	struct xmg_data* xmg = dev_get_drvdata(hwdev);
+    int index = to_sensor_dev_attr(devattr)->index;
+    struct xmg_data* xmg = dev_get_drvdata(hwdev);
     struct device* dev = &xmg->pdev->dev;
 
     struct xmg_fan_acpi_response fan_data;
@@ -286,7 +286,7 @@ static ssize_t xmg_hwmon_fan_show(struct device* hwdev,
     }
 
     fan_speed = XMG_ACPI_RPM_TO_REAL(fan_speed);
-	return sprintf(buf, "%d\n", fan_speed);
+    return sprintf(buf, "%d\n", fan_speed);
 }
 
 static ssize_t xmg_hwmon_fan_label_show(struct device* hwdev,
@@ -332,8 +332,8 @@ static umode_t xmg_acpi_is_visible(struct kobject *kobj, struct attribute *attr,
 
 
 static const struct attribute_group xmg_acpi_group = {
-	.attrs = xmg_acpi_attrs,
-	.is_visible = xmg_acpi_is_visible,
+    .attrs = xmg_acpi_attrs,
+    .is_visible = xmg_acpi_is_visible,
 };
 __ATTRIBUTE_GROUPS(xmg_acpi);
 
@@ -573,7 +573,7 @@ static int xmg_driver_resume(struct device *device) {
 }
 
 static const struct dev_pm_ops xmg_driver_pm_ops = {
-	.resume		= xmg_driver_resume,
+    .resume		= xmg_driver_resume,
 };
 
 static const struct acpi_device_id xmg_driver_acpi_match[] = {
@@ -587,7 +587,7 @@ static struct platform_driver xmg_driver = {
     .remove     = xmg_driver_remove,
     .driver = {
         .name = "xmg_driver",
-		.acpi_match_table = ACPI_PTR(xmg_driver_acpi_match),
+        .acpi_match_table = ACPI_PTR(xmg_driver_acpi_match),
         .pm = &xmg_driver_pm_ops,
     },
 };
