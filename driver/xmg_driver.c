@@ -208,6 +208,47 @@ exit:
     return ret;
 }
 
+static ssize_t xmg_hwmon_temp_show(struct device* hwdev,
+				  struct device_attribute* devattr, char* buf) {
+    int index = to_sensor_dev_attr(devattr)->index;
+	struct xmg_data* xmg = dev_get_drvdata(hwdev);
+    struct device* dev = &xmg->pdev->dev;
+
+    struct xmg_fan_acpi_response fan_data;
+    int temperature, ret = 0;
+
+    ret = xmg_fan_get_data(dev, &fan_data);
+    if(ret != 0) {
+        XMG_LOG_ERR(dev, "failed to get fan_data (ret=%d)", ret);
+        return ret;
+    }
+
+    if(index == 0)
+        temperature = fan_data.cpu_temp;
+    else if(index == 1)
+        temperature = fan_data.gpu_temp;
+    else {
+        XMG_LOG_ERR(dev, "invalid sensor index (%d)", index);
+        return -EINVAL;
+    }
+	return sprintf(buf, "%d\n", temperature * 1000);
+}
+
+static ssize_t xmg_hwmon_temp_label_show(struct device* hwdev,
+                    struct device_attribute* devattr, char* buf) {
+    int index = to_sensor_dev_attr(devattr)->index;
+
+    static const char* XMG_TEMP_LABELS[] = {
+        "CPU Temp",
+        "GPU Temp",
+    };
+
+    if(index < 0 || index >= ARRAY_SIZE(XMG_TEMP_LABELS))
+        return -EINVAL;
+
+    return sprintf(buf, "%s\n", XMG_TEMP_LABELS[index]);
+}
+
 /*
 * Convert value returned by ACPI call to rotations per minute (RPM)
 *  - this formula is equivalent to `2 * 60 / (128 / 23 * acpi_value)`
@@ -267,12 +308,20 @@ static SENSOR_DEVICE_ATTR_RO(fan1_input, xmg_hwmon_fan, 0);
 static SENSOR_DEVICE_ATTR_RO(fan1_label, xmg_hwmon_fan_label, 0);
 static SENSOR_DEVICE_ATTR_RO(fan2_input, xmg_hwmon_fan, 1);
 static SENSOR_DEVICE_ATTR_RO(fan2_label, xmg_hwmon_fan_label, 1);
+static SENSOR_DEVICE_ATTR_RO(temp1_input, xmg_hwmon_temp, 0);
+static SENSOR_DEVICE_ATTR_RO(temp1_label, xmg_hwmon_temp_label, 0);
+static SENSOR_DEVICE_ATTR_RO(temp2_input, xmg_hwmon_temp, 1);
+static SENSOR_DEVICE_ATTR_RO(temp2_label, xmg_hwmon_temp_label, 1);
 
 static struct attribute *xmg_acpi_attrs[] = {
     &sensor_dev_attr_fan1_input.dev_attr.attr,      /* 0 - CPU Fan RPM */
     &sensor_dev_attr_fan1_label.dev_attr.attr,      /* 1 - CPU Fan Label */
     &sensor_dev_attr_fan2_input.dev_attr.attr,      /* 2 - GPU Fan RPM */
     &sensor_dev_attr_fan2_label.dev_attr.attr,      /* 3 - GPU Fan Label */
+    &sensor_dev_attr_temp1_input.dev_attr.attr,     /* 4 - CPU Temperature */
+    &sensor_dev_attr_temp1_label.dev_attr.attr,     /* 5 - CPU Temp Label */
+    &sensor_dev_attr_temp2_input.dev_attr.attr,     /* 6 - GPU Temperature */
+    &sensor_dev_attr_temp2_label.dev_attr.attr,     /* 7 - GPU Temp Label */
     NULL,                                           /* Don't forget about NULL terminator! */
 };
 
