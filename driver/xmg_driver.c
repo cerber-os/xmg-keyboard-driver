@@ -198,6 +198,11 @@ static int xmg_fan_get_data(struct device* dev, struct xmg_fan_acpi_response* fa
 
     memcpy(fan_data, acpi_obj->buffer.pointer, sizeof(*fan_data));
 
+    // Fix endianess
+    fan_data->cpu_rpm = be16_to_cpu(fan_data->cpu_rpm);
+    fan_data->gpu_rpm = be16_to_cpu(fan_data->gpu_rpm);
+    fan_data->gpu2_rpm = be16_to_cpu(fan_data->gpu2_rpm);
+
 exit:
     kfree(acpi_output.pointer);
     return ret;
@@ -268,6 +273,7 @@ static struct attribute *xmg_acpi_attrs[] = {
     &sensor_dev_attr_fan1_label.dev_attr.attr,      /* 1 - CPU Fan Label */
     &sensor_dev_attr_fan2_input.dev_attr.attr,      /* 2 - GPU Fan RPM */
     &sensor_dev_attr_fan2_label.dev_attr.attr,      /* 3 - GPU Fan Label */
+    NULL,                                           /* Don't forget about NULL terminator! */
 };
 
 
