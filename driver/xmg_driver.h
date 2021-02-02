@@ -3,11 +3,12 @@
  *          in some XMG laptops
  */
 
-#define XMGDriverVersionStr	"1.8"
+#define XMGDriverVersionStr	"1.9"
 
 struct xmg_data {
     struct platform_device* pdev;
     struct miscdevice mdev;
+    struct device *hdev;
     
     // Remembered state
     atomic_t brightness;
@@ -28,6 +29,8 @@ struct xmg_data {
 #define KEYBOARD_BOOT_MAGIC         0x18
 
 #define MAX_BRIGHTNESS_LEVEL        191
+
+#define FAN_DCHU_COMMAND_GET        12
 
 
 /*
