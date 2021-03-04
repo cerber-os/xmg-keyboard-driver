@@ -280,12 +280,9 @@ static ssize_t xmg_hwmon_fan_show(struct device* hwdev,
         return -EINVAL;
     }
 
-    if(fan_speed == 0) {
-        XMG_LOG_WARN(dev, "CPU Fan RPM is Infinity");
-        return -EFAULT;
+    if(fan_speed != 0) {
+        fan_speed = XMG_ACPI_RPM_TO_REAL(fan_speed);
     }
-
-    fan_speed = XMG_ACPI_RPM_TO_REAL(fan_speed);
     return sprintf(buf, "%d\n", fan_speed);
 }
 
